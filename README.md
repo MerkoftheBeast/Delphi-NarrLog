@@ -16,7 +16,7 @@ Designed for multi-user environments where operators need append-only logging, t
 
 ## Quick Start (Local)
 
-'''powershell
+```powershell
 # Clone the repo
 git clone https://github.com/MerkoftheBeast/Delphi-NarrLog.git
 cd narrative_log
