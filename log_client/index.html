@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Delphi Narrative Log</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; }
+    #log { border: 1px solid #ccc; padding: 8px; height: 60vh; overflow: auto; }
+    .item { border-bottom: 1px solid #eee; padding: 6px 0; }
+    .meta { color: #555; font-size: 12px; }
+  </style>
+</head>
+<body>
+<h2>Narrative Log</h2>
+
+<div>
+  <label>Author (X-User): <input id="author" value="Damian"></label>
+</div>
+<div>
+  <textarea id="body" rows="3" cols="80" placeholder="Type your log entry..."></textarea>
+</div>
+<div>
+  <label>Ndd (0-99): <input id="node" type="number" min="0" max="99" style="width:60px"></label>
+  <label>ddd (0-999): <input id="input" type="number" min="0" max="999" style="width:60px"></label>
+  <label>Tags JSON: <input id="tags" placeholder='{"priority":"high"}' size="40"></label>
+  <button id="submit">Post</button>
+</div>
+
+<h3>Live Feed</h3>
+<div id="log"></div>
+
+<script>
+const API = location.origin.replace(/:\d+$/, ":8088"); // expects backend on 8088
+const logDiv = document.getElementById("log");
+
+function render(item, prepend=true){
+  const d = document.createElement("div");
+  d.className = "item";
+  d.innerHTML = `
+    <div class="meta">#${item.id} • ${item.created_utc} • ${item.author} • N${item.node_code ?? ""}_${(item.input_code ?? "").toString().padStart(3,"0")}</div>
+    <div>${item.body.replace(/</g,"&lt;")}</div>
+    <div class="meta">curr=${item.curr_hash.slice(0,12)}… prev=${(item.prev_hash||"").slice(0,12)}… supersedes=${item.supersedes_id ?? "-"}</div>
+  `;
+  if (prepend && logDiv.firstChild) logDiv.insertBefore(d, logDiv.firstChild);
+  else logDiv.appendChild(d);
+}
+
+async function loadRecent(){
+  const r = await fetch(`${API}/log?limit=50`);
+  const data = await r.json();
+  data.forEach(x => render(x, false));
+}
+
+document.getElementById("submit").onclick = async () => {
+  const author = document.getElementById("author").value || "unknown";
+  const body = document.getElementById("body").value;
+  const node = document.getElementById("node").value ? Number(document.getElementById("node").value) : null;
+  const input = document.getElementById("input").value ? Number(document.getElementById("input").value) : null;
+  let tags = document.getElementById("tags").value.trim();
+  try { tags = tags ? JSON.parse(tags) : {}; } catch { alert("Tags must be JSON"); return; }
+
+  const r = await fetch(`${API}/log`, {
+    method: "POST",
+    headers: { "Content-Type":"application/json", "X-User": author },
+    body: JSON.stringify({ body, node_code: node, input_code: input, tags })
+  });
+  if (!r.ok) {
+    const e = await r.json(); alert("Error: " + (e.detail || r.status)); return;
+  }
+  document.getElementById("body").value = "";
+};
+
+function openWS(){
+  // If opening from file://, adjust to ws://HOST:8088/stream
+  const host = location.hostname || "127.0.0.1";
+  const url = `ws://${host}:8088/stream`;
+  const ws = new WebSocket(url);
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.entry) render(msg.entry, true);
+  };
+  ws.onclose = () => setTimeout(openWS, 2000);
+}
+loadRecent();
+openWS();
+</script>
+</body>
+</html>
